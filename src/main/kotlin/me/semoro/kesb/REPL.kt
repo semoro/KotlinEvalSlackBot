@@ -63,7 +63,6 @@ class CompilerTask(val input: Array<String>) : Runnable {
     var result = LinkedList<String>()
 }
 
-val taskStack = LinkedBlockingDeque<CompilerTask>()
 val executor = Executors.newScheduledThreadPool(1)!!
 
 fun startCompiler(): Process {
@@ -72,7 +71,5 @@ fun startCompiler(): Process {
 }
 
 fun evaluate(input: Array<String>): CompilerTask {
-    val task = CompilerTask(input)
-    taskStack.add(task)
-    return task
+    return CompilerTask(input)
 }
