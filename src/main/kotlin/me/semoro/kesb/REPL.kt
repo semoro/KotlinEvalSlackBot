@@ -7,7 +7,6 @@ import java.io.OutputStreamWriter
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
-import java.util.concurrent.LinkedBlockingDeque
 
 /**
  * Created by Semoro on 14.09.16.
@@ -18,7 +17,7 @@ enum class ProcessingState {
     Queued, Running, Finished, Timeout
 }
 
-val timeot = 1000
+val timeout = 5000
 
 class CompilerTask(val input: Array<String>) : Runnable {
     init {
@@ -27,19 +26,22 @@ class CompilerTask(val input: Array<String>) : Runnable {
 
     override fun run() {
         process = startCompiler()
-        val stream = BufferedWriter(OutputStreamWriter(process.outputStream))
+        val reader = BufferedReader(InputStreamReader(process.inputStream))
+        result.add(reader.readLine())
+        reader.readLine()
+        val writer = BufferedWriter(OutputStreamWriter(process.outputStream))
         for (i in input) {
-            stream.write(i)
-            stream.newLine()
-            stream.flush()
+            writer.write(i)
+            writer.newLine()
+            writer.flush()
         }
-        stream.write(":quit")
-        stream.newLine()
-        stream.flush()
+        writer.write(":quit")
+        writer.newLine()
+        writer.flush()
         processingState = ProcessingState.Running
-        val timeoutAt = System.currentTimeMillis() + timeot
+        val timeoutAt = System.currentTimeMillis() + timeout
         while (true) {
-            if(!process.isAlive){
+            if (!process.isAlive) {
                 processingState = ProcessingState.Finished
                 break
             }
@@ -50,9 +52,10 @@ class CompilerTask(val input: Array<String>) : Runnable {
             }
             Thread.sleep(50)
         }
-        BufferedReader(InputStreamReader(process.inputStream)).lines().forEach { result.add(it) }
-        result.removeFirst()
-        result.removeFirst()
+        reader.lines().forEach {
+            println(it)
+            result.add(it)
+        }
         result.removeLast()
         future.complete(this)
     }
