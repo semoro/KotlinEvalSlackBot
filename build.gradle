@@ -1,0 +1,38 @@
+
+group 'me.semoro'
+
+version '0.0.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.0.3'
+
+    repositories {
+        jcenter()
+        maven { url "http://dl.bintray.com/robfletcher/gradle-plugins" }
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    jcenter()
+    maven { url "https://jitpack.io" }
+}
+
+
+apply plugin: 'kotlin'
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
+    compile 'com.github.cy6erGn0m:kotlin-rxokhttp-websocket:0.0.1'
+    compile 'com.github.salomonbrys.kotson:kotson:2.4.0'
+}
+
