@@ -19,13 +19,13 @@ enum class ProcessingState {
 
 val timeout = 5000
 
-class CompilerTask(val input: Array<String>) : Runnable {
+class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, val onEnd: (CompilerTask) -> Unit) : Runnable {
     init {
         executor.execute(this)
     }
 
     override fun run() {
-        process = startCompiler()
+        val process = startCompiler()
         val reader = BufferedReader(InputStreamReader(process.inputStream))
         result.add(reader.readLine())
         reader.readLine()
@@ -39,29 +39,30 @@ class CompilerTask(val input: Array<String>) : Runnable {
         writer.newLine()
         writer.flush()
         processingState = ProcessingState.Running
+        onRun.invoke(this)
         val timeoutAt = System.currentTimeMillis() + timeout
         while (true) {
             if (!process.isAlive) {
+                reader.lines().forEach {
+                    result.add(it)
+                }
                 processingState = ProcessingState.Finished
+                result.removeLast()
                 break
             }
             if (System.currentTimeMillis() > timeoutAt) {
+                reader.lines().forEach {
+                    result.add(it)
+                }
                 process.destroy()
                 processingState = ProcessingState.Timeout
                 break
             }
             Thread.sleep(50)
         }
-        reader.lines().forEach {
-            println(it)
-            result.add(it)
-        }
-        result.removeLast()
-        future.complete(this)
+        onEnd.invoke(this)
     }
 
-    lateinit var process: Process
-    val future = CompletableFuture<CompilerTask>()
     var processingState = ProcessingState.Queued
     var result = LinkedList<String>()
 }
@@ -73,6 +74,6 @@ fun startCompiler(): Process {
     return builder.start()
 }
 
-fun evaluate(input: Array<String>): CompilerTask {
-    return CompilerTask(input)
+fun evaluate(input: Array<String>, onRun: (CompilerTask) -> Unit, onEnd: (CompilerTask) -> Unit) {
+    CompilerTask(input, onRun, onEnd)
 }
