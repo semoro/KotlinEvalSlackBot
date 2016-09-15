@@ -46,7 +46,8 @@ class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, 
             if (!isNotTimeout)
                 process.destroy()
             processingState = if (isNotTimeout) ProcessingState.Finished else ProcessingState.Timeout
-            result = result.subList(result.indexOfFirst { it.startsWith(">>>") }, result.indexOfLast { it.contains(":quit") })
+            val indexLast = result.indexOfLast { it.contains(":quit") }
+            result = result.subList(result.indexOfFirst { it.startsWith(">>>") }, if (indexLast == -1) result.size else indexLast)
             onEnd.invoke(this)
         } catch (e: Throwable) {
             e.printStackTrace()
