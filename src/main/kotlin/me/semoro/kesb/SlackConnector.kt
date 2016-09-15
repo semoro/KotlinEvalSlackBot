@@ -10,8 +10,11 @@ import kotlinx.websocket.gson.withGsonConsumer
 import kotlinx.websocket.gson.withGsonProducer
 import kotlinx.websocket.newWebSocket
 import kotlinx.websocket.open
+import kotlinx.websocket.withStateObserver
 import rx.Observer
+import rx.Scheduler
 import rx.lang.kotlin.PublishSubject
+import rx.schedulers.Schedulers
 
 
 /**
@@ -107,7 +110,7 @@ object SlackConnector {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        token = args[0]
+        token = Config.token
         val startRequest = Request.Builder()
                 .url("https://slack.com/api/rtm.start" +
                         "?token=$token" +
@@ -121,17 +124,15 @@ object SlackConnector {
                 .execute()
                 .body()
                 .string()
-        println(startResponseText)
+
         val startResponse = parser.parse(startResponseText)
         if (startResponse["ok"].asBoolean) {
             selfName = startResponse["self"]["name"].asString
             selfID = startResponse["self"]["id"].asString
             val ws = okhttpclient.newWebSocket(startResponse["url"].asString)
             ws.withGsonConsumer(consumer, gson)
-            ws.withGsonProducer(commandsToSend, gson).open()
-            while (true) {
-                Thread.sleep(500)
-            }
+            ws.withGsonProducer(commandsToSend, gson)
+            ws.open().closeSubject.toBlocking().toFuture().get()
         }
     }
 

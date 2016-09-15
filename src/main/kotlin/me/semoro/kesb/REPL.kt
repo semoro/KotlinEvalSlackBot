@@ -17,7 +17,6 @@ enum class ProcessingState {
     Queued, Running, Finished, Timeout
 }
 
-val timeout = 5000L
 
 class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, val onEnd: (CompilerTask) -> Unit) : Runnable {
     init {
@@ -40,7 +39,7 @@ class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, 
             writer.flush()
             processingState = ProcessingState.Running
             onRun.invoke(this)
-            val isNotTimeout = process.waitFor(timeout, TimeUnit.MILLISECONDS)
+            val isNotTimeout = process.waitFor(Config.timeout, TimeUnit.MILLISECONDS)
             while (reader.ready()) {
                 result.add(reader.readLine())
             }
@@ -59,7 +58,7 @@ class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, 
     var result: MutableList<String> = LinkedList()
 }
 
-val executor = Executors.newScheduledThreadPool(1)!!
+val executor = Executors.newScheduledThreadPool(Config.workers)!!
 
 fun startCompiler(): Process {
     val builder = ProcessBuilder().command("kotlinc/bin/kotlinc")
