@@ -32,14 +32,13 @@ object SlackConnector {
     lateinit var selfID: String
     lateinit var selfName: String
     lateinit var token: String
-    lateinit var tokenApi: String
 
     data class MessageId(val ts: String, val channel: String)
 
 
     fun fillMessageBodyBuilder(processingState: ProcessingState, text: String, channel: String): FormEncodingBuilder {
         val encodingBuilder = FormEncodingBuilder()
-        encodingBuilder.add("token", tokenApi)
+        encodingBuilder.add("token", token)
         encodingBuilder.add("text", text)
         encodingBuilder.add("channel", channel)
         encodingBuilder.add("parse", "full")
@@ -64,7 +63,7 @@ object SlackConnector {
         return null
     }
 
-    fun updateMessage(processingState: ProcessingState, text: String, messageId: MessageId): MessageId? {
+    fun updateMessage(processingState: ProcessingState, text: String, messageId: MessageId): Boolean {
         val bodyBuilder = fillMessageBodyBuilder(processingState, text, messageId.channel)
         bodyBuilder.add("ts", messageId.ts)
         println("Sent update")
@@ -73,17 +72,14 @@ object SlackConnector {
                 .build()).execute()
 
         println(response.body().string())
-        val resultObject = parser.parse(response.body().string())
+        val resultObject = parser.parse(response.body().string()) as? JsonObject
+        return resultObject?.get("ok")?.asBoolean ?: false
 
-        if (resultObject["ok"].asBoolean)
-            return MessageId(resultObject["ts"].asString, messageId.channel)
-        return null
     }
 
     @JvmStatic
     fun main(args: Array<String>) {
         token = args[0]
-        tokenApi = args[1]
         val startRequest = Request.Builder()
                 .url("https://slack.com/api/rtm.start" +
                         "?token=$token" +
@@ -114,29 +110,38 @@ object SlackConnector {
 
     val commandsToSend = PublishSubject<JsonElement>()
 
+    fun processMessage(t: JsonObject) {
+        val text = t.get("text").asString
+        if (text.contains(selfID)) {
+            val channel = t.get("channel").asString
+
+            val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
+            val code = codeRegex.findAll(text)
+                    .flatMap { it.groupValues[1].splitToSequence("\n") }
+                    .map(String::trim)
+                    .filterNot { it.length == 0 }.toList()
+            if (code.size > 0) {
+                val msg = postMessage(ProcessingState.Queued, "", channel)!!
+                evaluate(code.toTypedArray(), {
+                    updateMessage(it.processingState, "", msg)
+                }, {
+                    val result = it.result.joinToString("\n")
+                    updateMessage(it.processingState, "```$result\n```", msg)
+                })
+
+            }
+        }
+    }
+
 
     fun processEvent(t: JsonObject) {
         println("Event $t")
         when (t.get("type").asString) {
             "message" -> {
-                val text = t.get("text").asString
-                if (text.contains(selfID)) {
-                    val channel = t.get("channel").asString
-
-                    val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
-                    val code = codeRegex.findAll(text)
-                            .flatMap { it.groupValues[1].splitToSequence("\n") }
-                            .map(String::trim)
-                            .filterNot { it.length == 0 }.toList()
-                    if (code.size > 0) {
-                        val msg = postMessage(ProcessingState.Queued, "", channel)!!
-                        val task = evaluate(code.toTypedArray())
-                        task.future.thenAccept {
-                            val result = it.result.joinToString("\n")
-                            updateMessage(it.processingState, "```$result\n```", msg)
-                        }
-                    }
-                }
+                if (t.has("message"))
+                    processMessage(t["message"].asJsonObject)
+                else
+                    processMessage(t)
             }
             else -> {
                 return
