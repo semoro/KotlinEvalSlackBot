@@ -1,4 +1,3 @@
-
 group 'me.semoro'
 
 version '0.0.0-SNAPSHOT'
@@ -12,6 +11,7 @@ buildscript {
     }
     dependencies {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "de.undercouch:gradle-download-task:3.1.1"
     }
 }
 
@@ -36,3 +36,28 @@ dependencies {
     compile 'com.github.salomonbrys.kotson:kotson:2.4.0'
 }
 
+apply plugin: 'de.undercouch.download'
+import de.undercouch.gradle.tasks.download.Download
+
+task downloadKotlinCompiler(type: Download) {
+    overwrite false
+    acceptAnyCertificate true
+    src "https://github.com/JetBrains/kotlin/releases/download/v${kotlin_version}/kotlin-compiler-${kotlin_version}.zip"
+    dest new File(buildDir, "kotlin-compiler-${kotlin_version}.zip")
+}
+
+task unzipKotlinCompiler(dependsOn: downloadKotlinCompiler, type: Copy) {
+    from zipTree(downloadKotlinCompiler.dest)
+    into buildDir
+}
+
+apply plugin: 'application'
+
+mainClassName = 'me.semoro.kesb.SlackConnector'
+applicationDistribution.from("build/kotlinc") {
+    into 'kotlinc'
+}
+
+applicationDistribution.from("$projectDir") {
+    include 'Dockerfile'
+}
