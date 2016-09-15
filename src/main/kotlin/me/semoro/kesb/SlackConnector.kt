@@ -23,7 +23,14 @@ import rx.lang.kotlin.PublishSubject
 val apiUrl = "https://slack.com/api"
 val postMessageRequestBuilder = Request.Builder().url("$apiUrl/chat.postMessage")
 val updateMessageRequestBuilder = Request.Builder().url("$apiUrl/chat.update")
+val getMessageRequestBuilder = Request.Builder().url("$apiUrl/channels.history")
 
+val stateColors = mapOf(
+        ProcessingState.Queued to "#439FE0",
+        ProcessingState.Running to "warning",
+        ProcessingState.Finished to "good",
+        ProcessingState.Timeout to "danger"
+)
 
 object SlackConnector {
     val gson = Gson()
@@ -39,16 +46,41 @@ object SlackConnector {
     fun fillMessageBodyBuilder(processingState: ProcessingState, text: String, channel: String): FormEncodingBuilder {
         val encodingBuilder = FormEncodingBuilder()
         encodingBuilder.add("token", token)
-        encodingBuilder.add("text", text)
+        encodingBuilder.add("text", "")
         encodingBuilder.add("channel", channel)
         encodingBuilder.add("parse", "full")
         val attachments = JsonArray()
         val statusAttachment = JsonObject()
         statusAttachment["text"] = processingState.name
-        statusAttachment["color"] = "#0f0"
+        statusAttachment["color"] = stateColors[processingState]
         attachments.add(statusAttachment)
+
+        val resultAttachment = JsonObject()
+        resultAttachment["text"] = text
+        val markdownIn = JsonArray()
+        markdownIn.add("text")
+        resultAttachment["mrkdwn_in"] = markdownIn
+        attachments.add(resultAttachment)
+
         encodingBuilder.add("attachments", gson.toJson(attachments))
         return encodingBuilder
+    }
+
+
+    fun getMessage(ts: String, channel: String): MessageId? {
+        val encodingBuilder = FormEncodingBuilder()
+        encodingBuilder.add("token", token)
+        encodingBuilder.add("oldest", ts)
+        encodingBuilder.add("count", "1")
+        encodingBuilder.add("channel", channel)
+
+        val response = okhttpclient.newCall(getMessageRequestBuilder
+                .post(encodingBuilder.build())
+                .build()).execute()
+        val resultObject = parser.parse(response.body().string())
+        if (resultObject["ok"].asBoolean)
+            return MessageId(resultObject["messages"][0]["ts"].asString, channel)
+        return null
     }
 
     fun postMessage(processingState: ProcessingState, text: String, channel: String): MessageId? {
@@ -66,15 +98,11 @@ object SlackConnector {
     fun updateMessage(processingState: ProcessingState, text: String, messageId: MessageId): Boolean {
         val bodyBuilder = fillMessageBodyBuilder(processingState, text, messageId.channel)
         bodyBuilder.add("ts", messageId.ts)
-        println("Sent update")
         val response = okhttpclient.newCall(updateMessageRequestBuilder
                 .post(bodyBuilder.build())
                 .build()).execute()
-
-        println(response.body().string())
         val resultObject = parser.parse(response.body().string()) as? JsonObject
         return resultObject?.get("ok")?.asBoolean ?: false
-
     }
 
     @JvmStatic
@@ -110,17 +138,47 @@ object SlackConnector {
 
     val commandsToSend = PublishSubject<JsonElement>()
 
-    fun processMessage(t: JsonObject) {
-        val text = t.get("text").asString
-        if (text.contains(selfID)) {
-            val channel = t.get("channel").asString
+    fun codeFromMessageIfShouldExecute(text: String): List<String>? {
+        if (selfID !in text)
+            return null
+        val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
+        val code = codeRegex.findAll(text)
+                .flatMap { it.groupValues[1].splitToSequence("\n") }
+                .map(String::trim)
+                .filterNot { it.length == 0 }.toList()
+        if (code.size > 0)
+            return code
+        else
+            return null
+    }
 
-            val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
-            val code = codeRegex.findAll(text)
-                    .flatMap { it.groupValues[1].splitToSequence("\n") }
-                    .map(String::trim)
-                    .filterNot { it.length == 0 }.toList()
-            if (code.size > 0) {
+
+    fun processMessageChanged(t: JsonObject, channel: String) {
+        if (t.has("message"))
+            processMessageChanged(t["message"].asJsonObject, channel)
+        else {
+            val text = t["text"].asString
+            codeFromMessageIfShouldExecute(text)?.let {
+                code ->
+                val msg = getMessage(t["ts"].asString, channel)!!
+                updateMessage(ProcessingState.Queued, "", msg)
+                evaluate(code.toTypedArray(), {
+                    updateMessage(it.processingState, "", msg)
+                }, {
+                    val result = it.result.joinToString("\n")
+                    updateMessage(it.processingState, "```$result\n```", msg)
+                })
+            }
+        }
+    }
+
+    fun processMessage(t: JsonObject, channel: String) {
+        if (t.has("message"))
+            processMessage(t["message"].asJsonObject, channel)
+        else {
+            val text = t["text"].asString
+            codeFromMessageIfShouldExecute(text)?.let {
+                code ->
                 val msg = postMessage(ProcessingState.Queued, "", channel)!!
                 evaluate(code.toTypedArray(), {
                     updateMessage(it.processingState, "", msg)
@@ -128,20 +186,20 @@ object SlackConnector {
                     val result = it.result.joinToString("\n")
                     updateMessage(it.processingState, "```$result\n```", msg)
                 })
-
             }
         }
     }
 
 
     fun processEvent(t: JsonObject) {
-        println("Event $t")
         when (t.get("type").asString) {
             "message" -> {
-                if (t.has("message"))
-                    processMessage(t["message"].asJsonObject)
-                else
-                    processMessage(t)
+                val channel = t["channel"].asString
+                if (t.has("subtype")) {
+                    if (t["subtype"].asString == "message_changed")
+                        processMessageChanged(t, channel)
+                } else
+                    processMessage(t, channel)
             }
             else -> {
                 return
@@ -156,8 +214,12 @@ object SlackConnector {
         }
 
         override fun onNext(t: JsonObject) {
-            if (t.has("type"))
-                processEvent(t)
+            try {
+                if (t.has("type"))
+                    processEvent(t)
+            } catch (throwable: Throwable) {
+                throwable.printStackTrace()
+            }
         }
 
         override fun onCompleted() {
