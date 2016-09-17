@@ -12,6 +12,7 @@ buildscript {
     dependencies {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "de.undercouch:gradle-download-task:3.1.1"
+        classpath "com.bmuschko:gradle-docker-plugin:3.0.3"
     }
 }
 
@@ -36,6 +37,8 @@ dependencies {
     compile 'com.github.salomonbrys.kotson:kotson:2.4.0'
 
     compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.21' //TODO change backend
+    compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.4'
+
     compile 'io.github.microutils:kotlin-logging:1.3.2'
 
 }
@@ -62,6 +65,16 @@ applicationDistribution.from("build/kotlinc") {
     into 'kotlinc'
 }
 
-applicationDistribution.from("$projectDir") {
-    include 'Dockerfile'
+apply plugin: 'com.bmuschko.docker-java-application'
+
+
+docker {
+    url = "unix:///var/run/docker.sock"
+    javaApplication {
+        maintainer = 'Simon Ogorodnik "sem-oro@yandex.ru"'
+        ports = []
+    }
+    dockerDistTar {
+        workingDir("/$applicationName-${project.version}")
+    }
 }

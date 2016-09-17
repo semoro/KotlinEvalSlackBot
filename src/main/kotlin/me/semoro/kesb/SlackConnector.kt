@@ -12,6 +12,7 @@ import kotlinx.websocket.newWebSocket
 import kotlinx.websocket.open
 import mu.KLogger
 import mu.KLogging
+import org.apache.commons.lang3.StringEscapeUtils
 import rx.Observer
 import rx.lang.kotlin.PublishSubject
 
@@ -150,8 +151,9 @@ object SlackConnector : KLogging() {
         val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
         val code = codeRegex.findAll(text)
                 .flatMap { it.groupValues[1].splitToSequence("\n") }
-                .map(String::trim)
-                .filterNot { it.length == 0 }.toList()
+                .filter(String::isNotBlank)
+                .map(StringEscapeUtils::unescapeHtml4)
+                .toList()
         logger.trace { "Parsed code: $code" }
         if (code.size > 0)
             return code
