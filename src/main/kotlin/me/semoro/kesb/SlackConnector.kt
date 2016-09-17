@@ -10,11 +10,10 @@ import kotlinx.websocket.gson.withGsonConsumer
 import kotlinx.websocket.gson.withGsonProducer
 import kotlinx.websocket.newWebSocket
 import kotlinx.websocket.open
-import kotlinx.websocket.withStateObserver
+import mu.KLogger
+import mu.KLogging
 import rx.Observer
-import rx.Scheduler
 import rx.lang.kotlin.PublishSubject
-import rx.schedulers.Schedulers
 
 
 /**
@@ -35,7 +34,10 @@ val stateColors = mapOf(
         ProcessingState.Timeout to "danger"
 )
 
-object SlackConnector {
+object SlackConnector : KLogging() {
+
+
+    override val logger: KLogger = logger()
     val gson = Gson()
     val parser = JsonParser()
     val okhttpclient = OkHttpClient()
@@ -118,7 +120,6 @@ object SlackConnector {
                         "&no_unreads=true")
                 .get().build()
 
-
         val startResponseText = okhttpclient
                 .newCall(startRequest)
                 .execute()
@@ -126,6 +127,7 @@ object SlackConnector {
                 .string()
 
         val startResponse = parser.parse(startResponseText)
+        logger.info { "Got start response, status: ${startResponse["ok"]}" }
         if (startResponse["ok"].asBoolean) {
             selfName = startResponse["self"]["name"].asString
             selfID = startResponse["self"]["id"].asString
@@ -133,6 +135,8 @@ object SlackConnector {
             ws.withGsonConsumer(consumer, gson)
             ws.withGsonProducer(commandsToSend, gson)
             ws.open().closeSubject.toBlocking().toFuture().get()
+        } else {
+            logger.error { "Got non-ok start response: $startResponse" }
         }
     }
 
@@ -142,11 +146,13 @@ object SlackConnector {
     fun codeFromMessageIfShouldExecute(text: String): List<String>? {
         if (selfID !in text)
             return null
+        logger.debug { "Should execute code in message" }
         val codeRegex = "```(.*?)```".toRegex(setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
         val code = codeRegex.findAll(text)
                 .flatMap { it.groupValues[1].splitToSequence("\n") }
                 .map(String::trim)
                 .filterNot { it.length == 0 }.toList()
+        logger.trace { "Parsed code: $code" }
         if (code.size > 0)
             return code
         else
@@ -195,6 +201,7 @@ object SlackConnector {
     fun processEvent(t: JsonObject) {
         when (t.get("type").asString) {
             "message" -> {
+                logger.trace { "Got new message" }
                 val channel = t["channel"].asString
                 if (t.has("subtype")) {
                     if (t["subtype"].asString == "message_changed")
@@ -219,7 +226,7 @@ object SlackConnector {
                 if (t.has("type"))
                     processEvent(t)
             } catch (throwable: Throwable) {
-                throwable.printStackTrace()
+                logger.error { throwable }
             }
         }
 

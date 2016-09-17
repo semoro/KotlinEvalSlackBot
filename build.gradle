@@ -34,6 +34,10 @@ dependencies {
     compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     compile 'com.github.cy6erGn0m:kotlin-rxokhttp-websocket:0.0.1'
     compile 'com.github.salomonbrys.kotson:kotson:2.4.0'
+
+    compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.21' //TODO change backend
+    compile 'io.github.microutils:kotlin-logging:1.3.2'
+
 }
 
 apply plugin: 'de.undercouch.download'
