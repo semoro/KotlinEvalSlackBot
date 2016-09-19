@@ -26,7 +26,9 @@ import rx.lang.kotlin.PublishSubject
 val apiUrl = "https://slack.com/api"
 val postMessageRequestBuilder = Request.Builder().url("$apiUrl/chat.postMessage")
 val updateMessageRequestBuilder = Request.Builder().url("$apiUrl/chat.update")
-val getMessageRequestBuilder = Request.Builder().url("$apiUrl/channels.history")
+val getMessageRequestBuilderChannel = Request.Builder().url("$apiUrl/channels.history")
+val getMessageRequestBuilderIm = Request.Builder().url("$apiUrl/im.history")
+val getMessageRequestBuilderGroup = Request.Builder().url("$apiUrl/im.history")
 
 val stateColors = mapOf(
         ProcessingState.Queued to "#439FE0",
@@ -72,6 +74,14 @@ object SlackConnector : KLogging() {
         return encodingBuilder
     }
 
+    fun getMessageRequestBuilder(channel: String): Request.Builder? {
+        return when (channel[0]) {
+            'C' -> getMessageRequestBuilderChannel
+            'G' -> getMessageRequestBuilderGroup
+            'D' -> getMessageRequestBuilderIm
+            else -> return null
+        }
+    }
 
     fun getMessage(ts: String, channel: String): MessageId? {
         val encodingBuilder = FormEncodingBuilder()
@@ -80,7 +90,7 @@ object SlackConnector : KLogging() {
         encodingBuilder.add("count", "1")
         encodingBuilder.add("channel", channel)
 
-        val response = okhttpclient.newCall(getMessageRequestBuilder
+        val response = okhttpclient.newCall(getMessageRequestBuilder(channel)!!
                 .post(encodingBuilder.build())
                 .build()).execute()
         val resultObject = parser.parse(response.body().string())
@@ -228,7 +238,7 @@ object SlackConnector : KLogging() {
                 if (t.has("type"))
                     processEvent(t)
             } catch (throwable: Throwable) {
-                logger.error { throwable }
+                logger.error("Exception while processing event", throwable)
             }
         }
 

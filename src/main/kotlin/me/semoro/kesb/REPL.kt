@@ -59,10 +59,10 @@ class CompilerTask(val input: Array<String>, val onRun: (CompilerTask) -> Unit, 
             onEnd.invoke(this)
         } catch (e: Throwable) {
             if (e is ProcessKillFailedException) {
-                logger.error { e }
+                logger.error("PKFE", e)
                 System.exit(1)
             } else {
-                logger.warn { e }
+                logger.warn("Exception while running REPL", e)
             }
         }
 
